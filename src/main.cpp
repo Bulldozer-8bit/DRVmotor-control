@@ -1,61 +1,45 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include "Adafruit_DRV2605.h"
 
-Adafruit_DRV2605 drv;
+#define DRV2605_ADDR 0x5A
+#define I2C_SDA 8
+#define I2C_SCL 9
+
+void writeReg(uint8_t reg, uint8_t val) {
+  Wire.beginTransmission(DRV2605_ADDR);
+  Wire.write(reg);
+  Wire.write(val);
+  Wire.endTransmission();
+}
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("DRV2605 LRA Test");
-
-  // 初始化 I2C，ESP32-S3 默认 SDA=4, SCL=5 (根据你的实际引脚修改)
-  Wire.begin();
-
-  if (!drv.begin()) {
-    Serial.println("未能找到 DRV2605，请检查接线！");
-    while (1);
-  }
-
-  // --- 关键配置：切换到 LRA 模式 ---
-  drv.useLRA();             // 告诉芯片你接的是 LRA 而不是 ERM
+  Wire.begin(I2C_SDA, I2C_SCL);
   
-  // 选择实时播放模式 (Real-time Playback)
-  // 这种模式下，你可以通过代码精确控制振动的开启和关闭时间
-  drv.setMode(DRV2605_MODE_REALTIME); 
-}
-
-/**
- * 按照特定频率振动
- * @param hz 目标频率 (例如 50Hz)
- * @param durationMs 持续总时间
- */
-void vibrateAtFrequency(float hz, int durationMs) {
-  int periodMicros = 1000000 / hz;  // 计算周期（微秒）
-  int halfPeriod = periodMicros / 2;
-  unsigned long startTime = millis();
-
-  Serial.printf("正在以 %.2f Hz 频率振动...\n", hz);
-
-  while (millis() - startTime < durationMs) {
-    // 这里的 0x7F 是震动强度（0-127）
-    drv.setRealtimeValue(0x7F); 
-    delayMicroseconds(halfPeriod);
-    
-    drv.setRealtimeValue(0x00); 
-    delayMicroseconds(halfPeriod);
-  }
+  // 初始化：退出待机，设置 LRA 模式
+  writeReg(0x01, 0x00); // Mode: Internal Trigger
+  writeReg(0x1A, 0xB6); // Feedback: LRA Mode
+  writeReg(0x03, 0x06); // Library: LRA Library
 }
 
 void loop() {
-  // 示例：以 175Hz 振动 1 秒（很多 LRA 的额定谐振频率在 170-230Hz 之间）
-  vibrateAtFrequency(175.0, 1000);
+  Serial.println("正在播放：单次点击（类似按钮按下）");
   
-  delay(2000); // 停顿 2 秒
+  // 填充波形序列器 (寄存器 0x04 到 0x0B 可填 8 个波形)
+  writeReg(0x04, 1);   // 波形 1: Triple Click
+  writeReg(0x05, 0);    // 结束标志
+  
+  writeReg(0x0C, 0x01); // GO!
+  
+  delay(2000);
 
-  // 示例：心跳感振动（高频短促两次）
-  vibrateAtFrequency(200.0, 100);
-  delay(100);
-  vibrateAtFrequency(200.0, 100);
+  Serial.println("正在播放：重低音震动（类似背心爆炸效果）");
+  writeReg(0x04, 1);    // Strong Click
+  writeReg(0x05, 1);    // 再来一个
+  writeReg(0x06, 47);   // 强蜂鸣长震动
+  writeReg(0x07, 0);    // 结束
+  
+  writeReg(0x0C, 0x01); // GO!
   
   delay(3000);
 }
