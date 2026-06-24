@@ -11,17 +11,16 @@
 
 // ---------- 时间常量（单位：毫秒） ----------
 const unsigned long DEBOUNCE_DELAY = 15;     // 硬件消抖时间
-const unsigned long LONG_PRESS_TIME = 350;   // 判定为长按的等待阈值
 const unsigned long DOUBLE_CLICK_TIME = 250; // 双击判定的最大间隔窗口
-const unsigned long LONG_VIBE_LIMIT = 3000;  // 长按最大安全保护时间
+const unsigned long LONG_VIBE_LIMIT = 5000;  // 长按最大安全保护时间为 5秒
+const unsigned long HEARTBEAT_LIMIT = 20000; // 【新增强调】心跳自动停止阈值：20秒
 
-// ---------- DRV2605 波形 ID (对照图表) ----------
-#define WAVEFORM_SHORT_CLICK 1    // 强力点击 100% (用作点 '.')
-#define WAVEFORM_LONG_BUZZ   47   // 蜂鸣 1 - 100% (用作划 '-')
+// ---------- DRV2605 波形 ID ----------
+#define WAVEFORM_LONG_BUZZ   47   // 蜂鸣 1 - 100%
 #define WAVEFORM_HEART_1     1    // 心跳第一下
-#define WAVEFORM_HEART_2     4    // 心跳第二下 (Sharp Click)
+#define WAVEFORM_HEART_2     4    // 心跳第二下
 
-enum Mode { IDLE, PLAYING_SHORT, PLAYING_LONG, HEARTBEAT };
+enum Mode { IDLE, PLAYING_LONG, HEARTBEAT };
 Mode currentMode = IDLE;
 
 // 状态机核心变量
@@ -33,12 +32,13 @@ unsigned long pressStartTime = 0;
 unsigned long releaseTime = 0;
 
 int clickCount = 0;
-bool waitingForClickTimeout = false;
 
 // 持续性效果控制变量
 unsigned long lastBuzzLoopTime = 0;
 unsigned long longPressAutoStopTime = 0;
+
 unsigned long heartbeatTimer = 0;
+unsigned long heartbeatStartTime = 0; // 【新增】记录心跳总启动时间
 int heartbeatStep = 0;
 
 void writeReg(uint8_t reg, uint8_t val) {
@@ -51,7 +51,7 @@ void writeReg(uint8_t reg, uint8_t val) {
 void triggerWaveform(uint8_t effectId) {
   for (int i = 0x04; i <= 0x0B; i++) writeReg(i, 0); // 清空序列
   writeReg(0x04, effectId);
-  writeReg(0x05, 0);        // 结束标记
+  writeReg(0x05, 0);        // 结束标志
   writeReg(0x0C, 0x01);     // GO!
 }
 
@@ -63,9 +63,10 @@ void startHeartbeat() {
   currentMode = HEARTBEAT;
   heartbeatStep = 0;
   heartbeatTimer = millis();
+  heartbeatStartTime = millis(); // 【新增】在启动时抓取当前的绝对时间
   triggerWaveform(WAVEFORM_HEART_1);
   heartbeatStep = 1;
-  Serial.println("[系统] 启动持续心跳模式");
+  Serial.println("[系统] 启动持续心跳模式 (限时 20 秒)");
 }
 
 void setup() {
@@ -79,7 +80,7 @@ void setup() {
   writeReg(0x1A, 0xB6);     // LRA 模式 (199Hz)
   writeReg(0x03, 0x06);     // 选择 LRA 官方效果库
   
-  Serial.println("=== 优化版摩斯电键系统已就绪 ===");
+  Serial.println("=== 已就绪 ===");
 }
 
 void loop() {
@@ -95,32 +96,32 @@ void loop() {
     // 【按下瞬间 - 下降沿触发】
     if (reading == LOW && !isPressed) {
       isPressed = true;
+      
+      if (now - releaseTime <= DOUBLE_CLICK_TIME) {
+        clickCount++;
+      } else {
+        clickCount = 1;
+      }
+      
       pressStartTime = now;
-      waitingForClickTimeout = false; // 有新动作，中断上一次的单击结算窗口
 
       if (currentMode == HEARTBEAT) {
-        // 如果当前在心跳，按下直接打断并退出心跳
         stopMotor();
         currentMode = IDLE;
         clickCount = 0;
-        Serial.println("[系统] 心跳已打断");
-      } else {
-        // 实时手感：按下立刻先给一个短点击响应，如果是长按随后会自动转为长鸣
-        currentMode = PLAYING_SHORT;
-        triggerWaveform(WAVEFORM_SHORT_CLICK);
-        clickCount++;
-      }
-    }
-
-    // 【处于按住状态 - 实时判定是否转为长按】
-    if (reading == LOW && isPressed && currentMode != PLAYING_LONG) {
-      if (now - pressStartTime >= LONG_PRESS_TIME) {
+        Serial.println("[系统] 心跳已由手动按键打断");
+      } 
+      else if (clickCount >= 2) {
+        stopMotor();
+        startHeartbeat();
+        clickCount = 0; 
+      } 
+      else {
         currentMode = PLAYING_LONG;
         triggerWaveform(WAVEFORM_LONG_BUZZ);
         lastBuzzLoopTime = now;
-        longPressAutoStopTime = now + LONG_VIBE_LIMIT;
-        clickCount = 0; // 长按不计入双击计数
-        Serial.println("[摩斯码 - ] 长按启动");
+        longPressAutoStopTime = now + LONG_VIBE_LIMIT; 
+        Serial.println("[摩斯码] 按下 -> 开始震动");
       }
     }
 
@@ -130,63 +131,50 @@ void loop() {
       releaseTime = now;
 
       if (currentMode == PLAYING_LONG) {
-        // 如果是长按松手，瞬间刹车
         stopMotor();
         currentMode = IDLE;
-        Serial.println("[摩斯码 - ] 长按松开，刹车");
-      } else if (currentMode == PLAYING_SHORT) {
-        // 如果松手时还是短按状态，开启双击/单击等待窗口
-        waitingForClickTimeout = true;
+        //Serial.println("[摩斯码] 松开 -> 瞬间刹车");
       }
     }
   }
   lastButtonState = reading;
 
-  // 2. 异步结算 单击 vs 双击
-  if (waitingForClickTimeout && (now - releaseTime > DOUBLE_CLICK_TIME)) {
-    waitingForClickTimeout = false;
-    if (clickCount == 1) {
-      Serial.println("[摩斯码 . ] 单击确认");
-      // 触发时已经在按下时响过了，这里只需结算状态
-      currentMode = IDLE;
-    } 
-    else if (clickCount >= 2) {
-      // 双击触发心跳
-      stopMotor();
-      startHeartbeat();
-    }
-    clickCount = 0;
-  }
-
-  // 3. 异步处理持续性硬件效果
+  // 2. 异步处理持续性硬件效果
   if (currentMode == PLAYING_LONG) {
-    // 安全熔断保护
     if (now >= longPressAutoStopTime) {
       stopMotor();
       currentMode = IDLE;
-      Serial.println("[安全切断] 长按满3秒强制停止");
+      Serial.println("[安全切断] 连续按住满 5 秒强制停止");
     } 
-    // 芯片内置波形 47 较短，若按住不放，每隔 180ms 自动重发波形维持震动
     else if (now - lastBuzzLoopTime >= 180) {
       triggerWaveform(WAVEFORM_LONG_BUZZ);
       lastBuzzLoopTime = now;
     }
   }
 
-  // 异步处理心跳波形序列
+  // 3. 异步处理心跳波形序列与【新增的20秒超时退出】
   if (currentMode == HEARTBEAT) {
-    const unsigned long HEART_INTERVAL1 = 150; 
-    const unsigned long HEART_INTERVAL2 = 700; 
-
-    if (heartbeatStep == 1 && (now - heartbeatTimer >= HEART_INTERVAL1)) {
-      triggerWaveform(WAVEFORM_HEART_2);
-      heartbeatStep = 2;
-      heartbeatTimer = now;
+    // 检查心跳总体播放时间是否达到了 20 秒
+    if (now - heartbeatStartTime >= HEARTBEAT_LIMIT) {
+      stopMotor();
+      currentMode = IDLE;
+      Serial.println("[安全切断] 心跳模式已满 20 秒，自动关闭");
     } 
-    else if (heartbeatStep == 2 && (now - heartbeatTimer >= HEART_INTERVAL2)) {
-      triggerWaveform(WAVEFORM_HEART_1);
-      heartbeatStep = 1;
-      heartbeatTimer = now;
+    else {
+      // 正常的心跳脉冲循环逻辑
+      const unsigned long HEART_INTERVAL1 = 150; 
+      const unsigned long HEART_INTERVAL2 = 700; 
+
+      if (heartbeatStep == 1 && (now - heartbeatTimer >= HEART_INTERVAL1)) {
+        triggerWaveform(WAVEFORM_HEART_2);
+        heartbeatStep = 2;
+        heartbeatTimer = now;
+      } 
+      else if (heartbeatStep == 2 && (now - heartbeatTimer >= HEART_INTERVAL2)) {
+        triggerWaveform(WAVEFORM_HEART_1);
+        heartbeatStep = 1;
+        heartbeatTimer = now;
+      }
     }
   }
 }
