@@ -8,10 +8,10 @@
         {
             "name": "PlatformIO",
             "includePath": [
-                "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control/include",
-                "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control/src",
-                "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control/.pio/libdeps/esp32-s3-devkitc-1/Adafruit DRV2605 Library",
-                "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control/.pio/libdeps/esp32-s3-devkitc-1/Adafruit BusIO",
+                "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control-local/include",
+                "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control-local/src",
+                "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control-local/.pio/libdeps/esp32-s3-devkitc-1/Adafruit DRV2605 Library",
+                "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control-local/.pio/libdeps/esp32-s3-devkitc-1/Adafruit BusIO",
                 "/Users/daniel/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
                 "/Users/daniel/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                 "/Users/daniel/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/newlib/platform_include",
@@ -249,10 +249,10 @@
             "browse": {
                 "limitSymbolsToIncludedHeaders": true,
                 "path": [
-                    "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control/include",
-                    "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control/src",
-                    "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control/.pio/libdeps/esp32-s3-devkitc-1/Adafruit DRV2605 Library",
-                    "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control/.pio/libdeps/esp32-s3-devkitc-1/Adafruit BusIO",
+                    "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control-local/include",
+                    "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control-local/src",
+                    "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control-local/.pio/libdeps/esp32-s3-devkitc-1/Adafruit DRV2605 Library",
+                    "/Users/daniel/Documents/PlatformIO/Projects/DRVmotor-control-local/.pio/libdeps/esp32-s3-devkitc-1/Adafruit BusIO",
                     "/Users/daniel/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
                     "/Users/daniel/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                     "/Users/daniel/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/newlib/platform_include",
