@@ -16,7 +16,7 @@ const unsigned long LONG_VIBE_LIMIT = 5000;  // 长按最大安全保护时间�
 const unsigned long HEARTBEAT_LIMIT = 20000; // 【新增强调】心跳自动停止阈值：20秒
 
 // ---------- DRV2605 波形 ID ----------
-#define WAVEFORM_LONG_BUZZ   47   // 蜂鸣 1 - 100%
+#define WAVEFORM_LONG_BUZZ   47   // 蜂鸣 1 - 100% (RTP模式下此ID不再需要，但保留以防万一)
 #define WAVEFORM_HEART_1     1    // 心跳第一下
 #define WAVEFORM_HEART_2     4    // 心跳第二下
 
@@ -34,7 +34,6 @@ unsigned long releaseTime = 0;
 int clickCount = 0;
 
 // 持续性效果控制变量
-unsigned long lastBuzzLoopTime = 0;
 unsigned long longPressAutoStopTime = 0;
 
 unsigned long heartbeatTimer = 0;
@@ -118,10 +117,13 @@ void loop() {
       } 
       else {
         currentMode = PLAYING_LONG;
-        triggerWaveform(WAVEFORM_LONG_BUZZ);
-        lastBuzzLoopTime = now;
+        
+        // 🔴【核心改动 1】长按进入 RTP 模式，实现绝对无间断平滑震动
+        writeReg(0x01, 0x05);     // 切换到实时播放模式 (RTP Mode)
+        writeReg(0x02, 0x7F);     // 写入震动强度的最大正值 (有符号模式下 0x7F 为全速)
+        
         longPressAutoStopTime = now + LONG_VIBE_LIMIT; 
-        Serial.println("[摩斯码] 按下 -> 开始震动");
+        Serial.println("[摩斯码] 按下 -> 开启 RTP 连续无缝震动");
       }
     }
 
@@ -131,9 +133,11 @@ void loop() {
       releaseTime = now;
 
       if (currentMode == PLAYING_LONG) {
-        stopMotor();
+        // 🔴【核心改动 2】松开时关闭 RTP 并恢复内部触发模式，解封状态机
+        writeReg(0x02, 0x00);     // 驱动归零
+        writeReg(0x01, 0x00);     // 切回内部触发模式 (Internal Trigger Mode)，给心跳用
         currentMode = IDLE;
-        //Serial.println("[摩斯码] 松开 -> 瞬间刹车");
+        Serial.println("[摩斯码] 松开 -> RTP 停止并恢复就绪");
       }
     }
   }
@@ -142,14 +146,13 @@ void loop() {
   // 2. 异步处理持续性硬件效果
   if (currentMode == PLAYING_LONG) {
     if (now >= longPressAutoStopTime) {
-      stopMotor();
+      // 🔴【核心改动 3】安全切断时同样需要清理 RTP 并还原模式
+      writeReg(0x02, 0x00);     // 驱动归零
+      writeReg(0x01, 0x00);     // 切回内部触发模式
       currentMode = IDLE;
       Serial.println("[安全切断] 连续按住满 5 秒强制停止");
     } 
-    else if (now - lastBuzzLoopTime >= 180) {
-      triggerWaveform(WAVEFORM_LONG_BUZZ);
-      lastBuzzLoopTime = now;
-    }
+    // 🔴【核心改动 4】原本在这里每 180ms 重复 triggerWaveform 的间断刷新逻辑已被彻底移除
   }
 
   // 3. 异步处理心跳波形序列与【新增的20秒超时退出】
